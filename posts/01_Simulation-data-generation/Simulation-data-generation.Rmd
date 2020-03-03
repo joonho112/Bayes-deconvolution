@@ -1,0 +1,504 @@
+---
+title: "Simulation Study: Design & Data Generation"
+author: 
+  - name: Joon-Ho Lee (joonho@berkeley.edu)
+date: "February 6, 2020"
+output:
+  html_document: 
+    css: styles.css
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+    theme: readable
+    toc: yes
+    toc_depth: 2
+  tufte::tufte_html:
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+bibliography: bibliography.bib
+---
+
+```{r basic_setup, include=FALSE}
+### Set working directory
+setwd("~/Treatment-effect-heterogeneity/Multisite Trials/docs/01_Simulation-data-generation")
+
+### Set RMarkdown options
+knitr::opts_chunk$set(echo = TRUE, warnings = FALSE, message = FALSE)
+
+# ### Set Stan options
+# options(mc.cores = parallel::detectCores())
+# rstan_options(auto_write = TRUE)
+# Sys.setenv(LOCAL_CPPFLAGS = '-march=native')
+
+### Call libraries
+library(tidyverse)
+library(cowplot)
+library(hhsim)
+
+### Theme settings
+theme_preset <- 
+  theme_bw() + 
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank(), 
+        legend.position = "bottom", 
+        legend.direction = "horizontal", 
+        legend.title = element_blank())
+```
+
+
+# Bayes deconvolution problem
+
+The basic two-stage sampling model that we focus on in this document is 
+
+$$
+y_{k}|\theta_{k} \sim N(\theta_{k}, \sigma_{k}^2), 
+$$
+$$
+\theta_{k}|G \overset{\text{iid}}{\sim} G, 
+$$
+$$
+G \sim f(G),
+$$
+
+where $k = 1, ..., K$, $K$ is the number of second-stage units under analysis, $\sigma_{k}^2$ is the variance of the observed data, $y_{k}$, and $f(G)$ is the prior distribution of $G$. The site-specific parameters of interest, $\theta_{k} (k = 1, ..., K)$ comes from the population distribution, $G$. The observations, $y_{k} (k = 1, ..., K)$ comes from a Gaussian sampling distribution that depends on the $\theta_{k}$'s. An example of such a scenario is when student outcomes are observed within schools. 
+
+
+What if we don't know about the prior density $G$? Empirical or full Bayes methods attempt to estimate $G$ from the observed sample $Y = (y_1, y_2, ..., y_K)$. In the normal model, the marginal density of $Y$ is the *convolution* of $G$ with a standard $N(0, 1)$ density. The empirical or full Bayes task is one of *deconvolution*: using the observed sample $Y$ from the marginal density to estimate $G$. The *Bayes deconvolution problem* is a general name for estimating $G$ given a random sample from the marginal density of $Y$ [@efron2016empirical].   
+
+
+
+# Design^[This largely replicates the design of @paddock2006flexible]
+
+We evaluate estimators under the basic two-stage model. The distribution $G$ is assumed to be unknown and is estimated using either empirical Bayes or fully hierarchical Bayesian approaches. 
+
+The data-generating scenarios are varied as follows: 
+
+1. `n`: number of sites ($K$ = 25, 50, 100, 200)
+    + The mathematical guarantees of nonparametric Bayesian methods are generally asymptotic in nature, and it is known that these guarantees may require sample sizes that are quite large (i.e., the asymptotics do not kick in for moderate number of sites). 
+    + In the context of multisite trials, sites are generally small to moderate in number, usually reaching only to the hundreds. 
+    + It is an open question whether we can reasonably expect to find decent estimates of distributions of effects in this scenario.
+
+
+2. `rgt`: the informativeness of the data
+    + The $\sigma_{k}^2$ have geometric mean $GM(\sigma_{k}^2)$. Values of $GM(\sigma_{k}^2)$ examined here are 0.10, 0.33, and 1.
+    + Large values indicate relatively less information in the data about $\theta$s than smaller values. 
+    + Large within-site variance = small information for the site specific effect
+
+
+3. `rsr`: the heterogeneity of the $\sigma_{k}^2$s
+    + The degree of heterogeneity of the $\sigma_{k}^2$ is measured by the ratio of the largest to smallest $\sigma^2$, $rsr = \sigma_k^2/\sigma_1^2$, assuming that the $\sigma_k^2$s are ordered in $k$. `rsr` varies from $1^2$ to $5^2$ and $10^2$. 
+    
+
+```{r}
+### Define a function to generate sigma vector
+gen_sigma <- function(n, rgt, rsr){
+  
+  # Set maximum and minimum within-site variances
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  
+  # Generate within-site variances for K sites
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  
+  return(sigma2)
+}
+
+### Define a function to calculate geometric mean
+geom_mean <- function(x){exp(mean(log(x)))}
+```
+
+
+The estimated sample geometric mean is equal to `rgt`:
+
+```{r}
+### Get example geometric means
+vec_rgt <- c(0.1, 0.33, 1.0)
+list_emp <- list()
+
+for (i in seq_along(vec_rgt)){
+  list_emp[[i]] <- gen_sigma(n = 50, rgt = vec_rgt[i], rsr = 5)
+}
+
+unlist(lapply(list_emp, geom_mean))
+```
+
+
+Between-site variances ($\text{var}(\theta_k))$) are set to 1 in all data-generating models. Within-site variances are generated depending upon `rgt` and `rsr` values. The intraclass correlations (ICCs) for different `rsr` values are
+
+```{r}
+### Get ranges of ICCs
+vec_rsr <- c(1, 5, 10)
+list_emp <- list()
+
+for (i in seq_along(vec_rgt)){
+  list_emp[[i]] <- range(1/(gen_sigma(n = 50, rgt = 1, rsr = vec_rsr[i]) + 1))
+}
+
+names(list_emp) <- paste0("rsr = ", vec_rsr)
+lapply(list_emp, round, 2)
+```
+
+
+4. The true population distribution of $G$
+- $G$ will be simulated to either follow (1) a Gaussian distribution with mean 0 and variance 1, (2) a $T_5$ distribution normalized to have mean 0 and variance 1, (3) a mixture $0.8 \cdot \mathrm{N}(0, 1) + 0.2 \cdot \mathrm{N}(4, 1)$ that is normalized to have mean 0 and variance 1. 
+Our simulation study is based on the following data-generating and data analysis scenario.
+
+
+```{r}
+### Set seed 
+set.seed(10101)
+
+### Generate a table of the simulation parameters
+tbl_param <- expand.grid(truth = c("Gaussian", "Mdp", "Tdist"),
+                         assumed = c("Gaussian", "Mdp", "Tdist", "NPML", "SBR"),
+                         rgt = c(0.1, 0.33, 1, 10),
+                         rsr = c(1, 5, 10),
+                         n = c(25, 50, 100, 200), 
+                         df = 5)
+
+### Reorder the table & add a variable
+tbl_param <- tbl_param %>%
+  arrange(n, rgt, rsr, truth, assumed)
+
+### Add a concatenated design indicator
+simulparam <- tbl_param %>%
+  unite(fname, truth, assumed, rgt, rsr, n, sep = "_") %>%
+  dplyr::select(-df) %>%
+  cbind.data.frame(tbl_param) %>%
+  select(truth:df, fname)
+
+head(simulparam, 10)
+```
+
+
+
+# Define functions to generate simulated data  
+
+## A Gaussian distribution 
+
+$G$ will be simulated to follow a Gaussian distribution with mean 0 and variance 1. We first set our simulation parameters to reflect a range of data informativeness and heterogeneity among sites with respect to variance. 
+
+
+```{r, fig.height=4, fig.width=5}
+### Example settings
+n <- 50; rgt <- 1; rsr <- 5
+
+### Set maximum and minimum within-site variances
+sigma2max <- rgt*rsr
+sigma2min <- sigma2max/(rsr^2)
+
+### Generate within-site variances (sds) for K sites
+sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+sd <- sqrt(sigma2)
+
+### Plot within-site variances
+df_temp <- tibble(sigma2, sd) %>%
+  mutate(K = 1:n())
+
+ggplot(data = df_temp, aes(x = K, y = sigma2)) + 
+  geom_point(size = 2.0) + geom_path(size = 1.0) + 
+  scale_x_continuous(breaks = seq(1, n, by = 5)) + 
+  labs(title = bquote("The heterogeneity of the " ~ sigma^2 ~"s")) + 
+  theme_preset
+```
+
+
+The **R** function that follows simulates a dataset conforming to the Gaussian model.
+
+```{r}
+### Define a function to generate Gaussian random draws
+GenerateGaussian <- function(n, rgt, rsr) {
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 = exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd = sqrt(sigma2)
+  
+  ### Set mean and SD of standard normal distribution   
+  mn <- 0; tau <- sqrt(1) 
+  
+  ### Generate data (Note the difference between theta and Y)
+  data_obj <- list()
+  data_obj$theta <- rnorm(n, mn, tau)        # site means
+  data_obj$Y <- rnorm(n, data_obj$theta, sd) # within-site outcome (only one per site) 
+  data_obj$sigma2 <- sigma2                  # site SDs
+  return(data_obj)
+}
+
+### Generate sample draws from the Gaussian model
+df_G <- GenerateGaussian(n = 50, rgt = 1, rsr = 5) %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+
+Next, we compare the observed estimates ($Y_k$) to the true distribution of $\theta_k$.  
+
+```{r, fig.width=10}
+### Define a function to generate plot
+plot_compare_true_obs <- function(df_G){
+  
+  # Compare the true distribution (theta) to the observed data (Y)
+  df_plot <- df_G %>%
+    select(theta, Y) %>% 
+    rename(True = theta, Observed = Y) %>%
+    gather(key = variable, value = value)
+  
+  p1 <- ggplot(data = df_plot, aes(x = value, group = variable, fill = variable)) +
+      geom_density(position = "identity", size = 0.1, alpha = 0.3) + 
+      geom_vline(aes(xintercept = 0), size = 0.3, color = "red", linetype = "dashed") + 
+      labs(title = bquote("True vs. Observed " ~ theta ~" Distributions"), 
+           x = expression(theta)) + theme_preset
+
+  # Compare point estimates by sigma_k
+  p2 <- ggplot(data = df_G %>% mutate(gap = abs(Y - theta)), aes(x = sigma2, y = gap)) + 
+      geom_point(aes(size = sigma2)) + 
+    labs(title = bquote("|Gap between True and Observed| vs. " ~ sigma^2), 
+         y = bquote("Gap between True and Observed " ~ theta), 
+         x = expression(sigma^2)) + theme_preset
+  
+  # Combine the two plots
+  p_grid <- plot_grid(p1, p2, labels = "AUTO")
+  return(p_grid)
+}
+
+plot_compare_true_obs(df_G)
+```
+
+
+The empirical distribution function (EDF) of the observed $y_k$ is overdispersed due to the uncertainty of the observed data, $\sigma_k^2$. The discrepancy between true and observed $\theta_k$s tends to be larger for the sites with larger $\sigma_k^2$.   
+
+
+
+
+## A T-distribution with $df = 5$ 
+
+$G$ will be simulated to follow a $T$-distribution with $df = 5$ normalized to have mean 0 and variance 1. The t-distribution is symmetric and bell-shaped, like the normal distribution, but has heavier tails, meaning that it is more prone to producing values that fall far from its mean.
+
+![](student_t_pdf.svg)
+
+The **R** function that follows simulates a dataset conforming to the $T$ model.
+
+```{r}
+### Define a function to generate random draws from T-distribution with df = 5 (nu)
+GenerateT <- function(n, rgt, rsr, nu) {
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd <- sqrt(sigma2)
+  
+  ## Mean of T-distribution
+  mn <- 0
+  
+  ## Generate data object
+  data_obj <- list()
+  data_obj$theta <- rt(n, nu)*sqrt((nu - 2)/nu)
+  data_obj$Y <- rnorm(n, data_obj$theta, sd)
+  data_obj$sigma2 <- sigma2
+  return(data_obj)
+}
+
+### Generate sample draws from the T model
+df_G <- GenerateT(n = 50, rgt = 1, rsr = 5, nu = 5) %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+
+Next, we compare the observed estimates ($Y_k$) to the true distribution of $\theta_k$. 
+
+```{r, fig.width=10}
+plot_compare_true_obs(df_G)
+```
+
+
+
+## A mixture of two Gaussian homoscedastic components
+
+$G$ will be simulated to follow a mixture $0.8N(0, 1) + 0.2N(4, 1)$ that is normalized to have mean 0 and variance 1.  
+
+In general, a mixture model assumes the data are generated by the following process: first we sample $z$, and then we sample the observables $\mathrm{y}$ from a distribution which depends on $z$, i.e,
+
+$$
+p(z, \mathrm{y}) = p(z)p(\mathrm{y}|z).
+$$
+
+In mixture models, $p(z)$ is always a multinomial distribution. $p(\mathrm{y}|x)$ can take a variety of parametric forms, but we assume that it is a Gaussian distribution. We refer to such a model as a **mixture of Gaussians**. It has the following generative process: 
+
+1. With probability of 0.8, choose the first component ($N(0, 1)$), otherwise choose the second component ($N(4, 1)$). 
+
+2. If we chose the first component, then sample $y$ from a Gaussian with mean 0 and standard deviation 1. 
+
+3. If we chose the second component, then sample $y$ from a Gaussian with mean 4 and standard deviation 1. 
+
+In general,  we can compute the probability density function (PDF) over $\mathrm{y}$ by marginalizing out, or summing out, $z$:
+
+$$
+\begin{array}{rcl}
+p(\mathrm{y}) &=& \displaystyle\sum_{z}{p(z)p(\mathrm{y}|z)} 
+\\ &=& \displaystyle\sum_{k = 1}^{K}{\mathrm{Pr}(z=k)p(\mathrm{y}|z = k)}.
+\end{array}
+$$
+
+The **R** function that follows simulates a dataset conforming to the mixture model. We first generate a random vector indicating components.
+
+```{r}
+### Set parameters
+tailp <- c(0.05, 0.1, 0.25, 0.75, 0.9, 0.95)  # tail probabilities
+delta <- 4    # distance between two mixtures
+ups <- 1      # want components to have equal variance
+eps <- 0.2    # mixing proportion (smaller side)
+
+### Generate a random vector indicating components 
+ind <- runif(20000) < (1 - eps)
+prop.table(table(ind))
+```
+
+
+Then we draw samples from the PDF which is a convex combinatino or weighted avearage of the PDFs of the component distributions. Note, however, that we want the $\mathrm{y}$ to be normalized to have mean 0 and variance 1. We thus first define a normalizing factor `a`, and then generate true PDF of $y$s from the mixture distribution with 20,000 simulated draws. 
+
+```{r}
+### Define a normalizing factor `a`
+a <- sqrt((1 - eps) + eps*ups^2 + eps*(1 - eps)*delta^2)
+a
+
+### Get true PDF of thetas from mixture
+quant <- ind*rnorm(20000, -eps*delta/a, sqrt(1/a^2)) + 
+  (1 - ind)*rnorm(20000, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+
+### Get true tail quantiles
+mdppriquan <- quantile(quant, tailp)
+
+### Check mean, SD, and quantiles of the true PDF
+c(mean(quant), sd(quant))
+```
+
+```{r}
+mdppriquan
+```
+
+The `GenerateMdp` function can be defined as follows.
+
+```{r}
+### Define a function to generate random draws from the mixture distribution
+GenerateMdp <- function(n, rgt, rsr){
+  
+  ### Set parameters 
+  data_obj <- list()
+  data_obj <- NULL
+  delta <- 4    # distance between two mixtures
+  ups <- 1      # want components to have equal variance
+  eps <- 0.2    # mixing proportion (smaller side)
+  
+  ### Define a normalizing factor `a`
+  a <- sqrt((1 - eps) + eps*ups^2 + eps*(1 - eps)*delta^2)
+  
+  ### Simulate a mixture of 2 normals with mean 0 and var 1  with this parameterization
+  ind <- runif(n) < (1 - eps)
+  data_obj$theta <- ind*rnorm(n, -eps*delta/a, sqrt(1/a^2)) + 
+    (1 - ind)*rnorm(n, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+  
+  ### Simulate true distribution for quantiles etc.
+  ind <- runif(n) < (1 - eps)
+  data_obj$theta <- ind*rnorm(n, -eps*delta/a, sqrt(1/a^2)) + 
+    (1 - ind)*rnorm(n, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+  tailp <- c(0.05, 0.1, 0.25, 0.75, 0.9, 0.95)
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd <- sqrt(sigma2)
+  
+  ### Generate data object (observed Y)
+  data_obj$Y <- rnorm(n, data_obj$theta, sd)
+  data_obj$sigma2 <- sigma2
+  data_obj$priquan <- mdppriquan
+  return(data_obj)
+}
+
+### Generate sample draws from the mixture model
+df_G <- GenerateMdp(n = 50, rgt = 1, rsr = 5)[c(1:3)] %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+
+Next, we compare the observed estimates ($Y_k$) to the true distribution of $\theta_k$.
+
+```{r, fig.width=10}
+plot_compare_true_obs(df_G)
+```
+
+
+
+## A mixture of two T-distributions
+
+$G$ will be simulated to follow a mixture of two T-distribution. We generate 75% of the sample from a $T(df = 8)$ and 25% from a $T(df = 50)$. 
+
+
+```{r}
+### Define a function to generate random draws from a mixture of two Ts
+GenerateSmix <- function(n, rgt, rsr) {
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd <- sqrt(sigma2)
+  
+  ### Generate data object
+  data_obj <- list()
+  nnorm <- floor(0.25*n)
+  data_obj$theta <- rt(n, 8)
+  data_obj$theta[1:nnorm] <- rt(nnorm, 50)  # replace the floor samples 
+  data_obj$Y <- rnorm(n, data_obj$theta, sd)
+  data_obj$sigma2 <- sigma2
+  return(data_obj)
+}
+
+### Generate sample draws from the mixture model
+df_G <- GenerateSmix(n = 50, rgt = 1, rsr = 5) %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+Note, however, that the true $\theta$ distribution is not normalized to have mean 0 and variance 1. 
+
+```{r}
+### Mean and SD of the T-mixture
+c(mean(df_G$theta), sd(df_G$theta))
+```
+
+
+Next, we compare the observed estimates ($Y_k$) to the true distribution of $\theta_k$.
+
+```{r, fig.width=10}
+plot_compare_true_obs(df_G)
+```
+
+
+
+# References
+
+
+

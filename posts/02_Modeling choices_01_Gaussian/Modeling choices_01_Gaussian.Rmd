@@ -1,0 +1,402 @@
+---
+title: "Modeling Choices #01. Gaussian"
+author: 
+  - name: Joon-Ho Lee (joonho@berkeley.edu)
+date: "February 23, 2020"
+output:
+  html_document: 
+    css: styles.css
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+    theme: readable
+    toc: yes
+    toc_depth: 2
+  tufte::tufte_html:
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+bibliography: bibliography.bib
+---
+
+```{r basic_setup, include=FALSE}
+### Set working directory
+setwd("~/Treatment-effect-heterogeneity/Multisite Trials/docs/02_Modeling choices_01_Gaussian")
+
+### Set RMarkdown options
+knitr::opts_chunk$set(echo = TRUE, warnings = FALSE, message = FALSE)
+
+### Call libraries
+library(tidyverse)
+library(cowplot)
+library(hhsim)
+library(rstan)
+library(bayesplot)
+
+### Set Stan options
+# options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+Sys.setenv(LOCAL_CPPFLAGS = '-march=native')
+
+### Theme settings
+theme_preset <- 
+  theme_bw() + 
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank(), 
+        legend.position = "bottom", 
+        legend.direction = "horizontal", 
+        legend.title = element_blank())
+```
+
+
+# Introduction
+
+
+## Bayes deconvolution problem
+
+The basic two-stage sampling model that we focus on in this document is 
+
+$$
+y_{k}|\theta_{k} \sim N(\theta_{k}, \sigma_{k}^2), 
+$$
+$$
+\theta_{k}|G \overset{\text{iid}}{\sim} G, 
+$$
+$$
+G \sim f(G),
+$$
+
+where $k = 1, ..., K$, $K$ is the number of second-stage units under analysis, $\sigma_{k}^2$ is the variance of the observed data, $y_{k}$, and $f(G)$ is the prior distribution of $G$. The site-specific parameters of interest, $\theta_{k} (k = 1, ..., K)$ comes from the population distribution, $G$. The observations, $y_{k} (k = 1, ..., K)$ comes from a Gaussian sampling distribution that depends on the $\theta_{k}$'s. The *Bayes deconvolution problem* is a general name for estimating $G$ given a random sample from the marginal density of $Y$ [@efron2016empirical]. 
+
+
+
+## The @rubin1981estimation model^[See @meager2019understanding pp. 62-63.]
+
+Now let us translate the sampling model into the @rubin1981estimation model on parallel randomized experiments. Consider $K$ study sites in which researchers perform the same interventions and measure the same outcomes. Each site, indexed by $k$, estimates a treatment effect $\tau_k$ averaged across individuals in the site. The sites don't report $\{\tau_k\}^{K}_{k=1}$: instead, they report $\{\hat{\tau}_k\}^{K}_{k=1}$. Some of the observed variation in $\{\hat{\tau}_k\}^{K}_{k=1}$ is sampling variation, yet there is likely to be some genuine variation in effects across settings, often defined as $\sigma_{\tau}^{2} = \text{var}(\tau_{k})$. 
+
+
+@rubin1981estimation considers a case in which the analyst has access to a set of estimated effects $\{\hat{\tau}_k\}^{K}_{k=1}$ and estimates of the associated sampling errors $\{\hat{se}_{\tau_k}\}^{K}_{k=1}$. Rubin specifies a relationship between the observed estimates and the unobserved $\{\tau_k\}^{K}_{k=1}$, and in addition spcifies a relationship between $\{\tau_k\}^{K}_{k=1}$ and the aggregate parameters $(\tau, \sigma_{\tau}^2)$). The @rubin1981estimation model has a hierarchical likelihood in which each site has own treatment effect parameter, $\tau_k$, but these effects are all drawn from a common distribution governed by $(\tau, \sigma_{\tau}^2)$ as follows:
+
+$$
+\hat{\tau}_{k} \sim N(\tau_{k}, \hat{se}_{k}^2) \quad \forall k, 
+$$
+$$
+\tau_{k} \sim N(\tau, \sigma_{\tau}^2) \quad \forall k. 
+$$
+
+
+The @rubin1981estimation model is fully parametric and a particular case of a more general class of models on $G$. The Gaussian distributional link between $\{\tau_k\}^{K}_{k=1}$ and $(\tau, \sigma_{\tau}^2)$ ensures that the model nests the analytic framework of classical meta-analysis, the results of which are recovered by setting $\sigma_{\tau}^{2} = 0$ [@gelman2013bayesian]. If $\sigma_{\tau}^{2} = \infty$, the @rubin1981estimation model returns the original estimates. 
+
+
+The Gaussian structure is tractable and offers lower mean squared error in many cases. @mcculloch2011misspecifying has shown that Gaussian hierachical models generally deliver reliable inference on the mean $\tau$ and variance $\sigma_{\tau}^2$ even when the underlying true distribution is not Gaussian. 
+
+
+
+# Generate simulated data from a Gaussian distribution 
+
+$G$ will be simulated to follow a Gaussian distribution with mean 0 and variance 1. We first set our simulation parameters to reflect a range of data informativeness and heterogeneity among sites with respect to variance. 
+
+
+```{r, fig.height=4, fig.width=5}
+### Example settings
+n <- 50; rgt <- 1; rsr <- 5
+
+### Set maximum and minimum within-site variances
+sigma2max <- rgt*rsr
+sigma2min <- sigma2max/(rsr^2)
+
+### Generate within-site variances (sds) for K sites
+sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+sd <- sqrt(sigma2)
+
+### Plot within-site variances
+df_temp <- tibble(sigma2, sd) %>%
+  mutate(K = 1:n())
+
+ggplot(data = df_temp, aes(x = K, y = sigma2)) + 
+  geom_point(size = 2.0) + geom_path(size = 1.0) + 
+  scale_x_continuous(breaks = seq(1, n, by = 5)) + 
+  labs(title = bquote("The heterogeneity of the " ~ sigma^2 ~"s")) + 
+  theme_preset
+```
+
+
+The **R** function that follows simulates a dataset conforming to the Gaussian model.
+
+```{r}
+### Define a function to generate Gaussian random draws
+GenerateGaussian <- function(n, rgt, rsr) {
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd <- sqrt(sigma2)
+  
+  ### Set mean and SD of standard normal distribution   
+  mn_tau <- 0; sigma_tau <- sqrt(1) 
+  
+  ### Generate data (Note the difference between theta and Y)
+  data_obj <- list()
+  data_obj$tau_k <- rnorm(n, mn_tau, sigma_tau)        # site means
+  data_obj$tau_k_hat <- rnorm(n, data_obj$tau_k, sd) # within-site outcome (only one per site) 
+  data_obj$se_k2 <- sigma2                  # site SDs
+  return(data_obj)
+}
+
+### Generate sample draws from the Gaussian model
+df_G <- GenerateGaussian(n = 50, rgt = 1, rsr = 5) %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+
+Next, we compare the observed estimates ($\hat{\tau}_k$) to the true distribution of $\tau_k$.  
+
+
+```{r, fig.width=10}
+### Define a function to generate plot
+plot_compare_true_obs <- function(df_G){
+  
+  # Compare the true distribution (tau_k) to the observed data (tau_k_hat)
+  df_plot <- df_G %>%
+    select(tau_k, tau_k_hat) %>% 
+    rename(True = tau_k, Observed = tau_k_hat) %>%
+    gather(key = variable, value = value)
+  
+  p1 <- ggplot(data = df_plot, aes(x = value, group = variable, fill = variable)) +
+      geom_density(position = "identity", size = 0.1, alpha = 0.3) + 
+      geom_vline(aes(xintercept = 0), size = 0.3, color = "red", linetype = "dashed") + 
+      labs(title = bquote("True vs. Observed " ~ tau_k ~" Distributions"), 
+           x = expression(tau_k)) + theme_preset
+
+  # Compare point estimates by sigma_k
+  p2 <- ggplot(data = df_G %>% mutate(gap = abs(tau_k_hat - tau_k)), 
+               aes(x = se_k2, y = gap)) + 
+      geom_point(aes(size = se_k2)) + 
+    labs(title = bquote("Gap between True and Observed tau_k vs. " ~ se^2), 
+         y = bquote("Gap between True and Observed tau_k"), 
+         x = expression(se^2)) + theme_preset
+  
+  # Combine the two plots
+  p_grid <- plot_grid(p1, p2, labels = "AUTO")
+  return(p_grid)
+}
+
+plot_compare_true_obs(df_G)
+```
+
+
+The empirical distribution function (EDF) of the observed $\hat{\tau}_k$ is overdispersed due to the uncertainty of the observed data, $\hat{se}_k^2$. The discrepancy between true and observed $\tau_k$s tends to be larger for the sites with larger $\hat{se}_k^2$.   
+
+
+
+# Parameter estimation using **Stan**
+
+First, we obtain simulates from the posterior of a Gaussian model using **Stan**. The **Stan** program for the @rubin1981estimation model is provided below:
+
+
+```
+data {
+  int<lower = 0> K;         // number of sites 
+  real tau_hat_k[K];        // estimated treatment effects
+  real<lower=0> se_k[K];    // s.e. of effect estimates 
+}
+parameters {
+  real tau; 
+  real<lower=0> sigma_tau;
+  real tau_k[K];
+}
+model {
+  sigma_tau ~ uniform(0, 100);     // vague prior
+  tau ~ normal(0, 100);            // vague prior
+  tau_k ~ normal(tau, sigma_tau);   // second-level normal
+  tau_hat_k ~ normal(tau_k, se_k);  // third-level normal
+}
+generated quantities{
+  real predicted_tau_k;
+  predicted_tau_k = normal_rng(tau, sigma_tau);  //mixed predictive 
+}
+```
+
+Note that the Rubin model assumes Gaussian distribution of effects across sites. The Rubin model performs univariate shrinkage so we will not need to specify a hyper-correlation prior. But we need to specify hyperpriors on the hyper-mean $\tau$ and hyper-SD $\sigma_{\tau}$:
+
+- For $\tau$, the prior is $\text{N}(0, 1000)$. This is a very weak prior which does little regularization, centered at zero. It assumes that causal effects should not be thought of as large unless data contains evidence to the contrary. 
+
+- For $\sigma_{\tau}$, the prior is $\text{Uniform}(0, 1000)$, which is also a very weak prior. 
+
+
+The model specified in the Stan program is fit to the simulated data:
+
+```{r, warning=FALSE, results=FALSE}
+### Collect data into a list format suitable for Stan
+stan_data <- list(K = length(df_G$K), 
+                  tau_hat_k = df_G$tau_k_hat, 
+                  se_k = sqrt(df_G$se_k2))
+
+### Compile and run the stan model
+fit_rubin<- stan(file = "rubin_model_01_Gaussian.stan",
+                 data = stan_data,
+                 iter = 1000, chains = 4)
+```
+
+
+The posterior means and standard deviations of the parameters can be displayed as follows:
+
+```{r}
+print(fit_rubin, probs = c(0.1, 0.5, 0.9), digits = 3)
+```
+
+
+Before interpreting the results, it is necessary to check that the chains have converged for each parameter. The $\hat{R}$ statistics shown in the rightmost column of the model summary are all less than 1.1. Also the effective sample size estimates are sufficient for inference. Thus it seems that **Stan** has produced an adequate approximation of the posterior.
+
+Then, we extract posterior samples and save it for later comparison with estimates from `hhsim` package. 
+
+```{r}
+### Extract posterior samples
+posterior <- as.data.frame(fit_rubin) %>%
+  mutate(Type = "Stan") %>%
+  dplyr::select(Type, everything())
+dim(posterior)
+```
+
+
+
+
+# Parameter estimation using the `hhsim` package
+
+Second, we obtain simulates from the posterior of a Gaussian model using the `hhsim` package. The **Stan** program above runs 4 chains with a burn-in period of 500 iterations followed by 500 additional iterations per chain. Since the `hhsim` package does not use separate chains, we set the number of  MCMC and burn-in iterations to 2,000, respectively, in order for the total iterations to be the same with those of the **Stan** program.    
+
+
+```{r}
+### Set numbers of iterations
+nmcmc <- 2000    # number of MCMC iterations per each model fit
+nburn <- 2000    # burn-in iterations to discard at each round
+nmcmcall <- nmcmc + nburn  
+
+### Extract vectors of observed tau_ks and their SEs
+Y <- df_G$tau_k_hat   # a vector of observed tau_ks
+sigma2 <- df_G$se_k2  # a vector of known SEs
+nDraws <- nmcmcall    # number of MCMC draws
+
+### Estimate the Gaussian model using hhsim package
+outp <- GaussianGaussian(Y, sigma2, nDraws)
+
+### Define a function to tidy up the output object
+get_posterior_sample <- function(output = outp, nburn = 100, nmcmcall = 600){
+  
+  # (1) Tidy up the "theta" output object
+  df_theta <- outp[["theta"]] %>%
+    unlist() %>%
+    matrix(nrow = length(outp[["theta"]]), byrow = TRUE) %>%
+    data.frame() %>%
+    slice(c((nburn + 1):nmcmcall))  # throw away burn-ins
+  colnames(df_theta) <- paste0("tau_k[", seq(ncol(df_theta)), "]")
+  
+  # (2) Tidy up the "tau" and "sigma_tau" output objects
+  df_hyperparm <- outp[["m"]] %>%
+    cbind.data.frame(outp[["tau2"]]) %>%
+    slice(c((nburn + 1):nmcmcall))  # throw away burn-ins
+  colnames(df_hyperparm) <- c("tau", "sigma_tau")
+  
+  ### Return the resulting object
+  cbind.data.frame(df_hyperparm, df_theta)
+}
+
+### Save posterior samples
+posterior_hhsim <- get_posterior_sample(outp, nburn, nmcmcall) %>%
+  mutate(Type = "hhsim") %>% dplyr::select(Type, everything())
+```
+
+
+
+# Comparison of posterior samples obtained from **Stan** and `hhsim`
+
+Would the **Stan** program and `hhsim` package lead to the same estimates? We start from combining the two data frames containing posterior samples:
+
+```{r}
+### Combine two dataframes: Stan and hhsim
+df_combine <- posterior %>%
+  dplyr::select(-predicted_tau_k, -lp__) %>% 
+  bind_rows(posterior_hhsim) %>%
+  mutate(Type = factor(Type, levels = c("Stan", "hhsim")))
+```
+
+
+From the results presented below, we can conclude that the **Stan** program and the `hhsim` package generates more or less similar posterior distributions for (1) hyperparameters ($\tau$ and $\sigma_{\tau}$), (2) empirical distribution function (EDF) estimates for $\tau_{k}$s, and (3) site-specific individual effect estimates $\tau_{k}$s.     
+
+
+## Hyperparameters $\tau$ and $\sigma_{\tau}$
+
+```{r, fig.width=10}
+### Generate a dataframe to plot
+df_plot <- df_combine %>%
+  dplyr::select(Type, tau, sigma_tau) %>%
+  gather(key = variable, value = value, -Type) %>%
+  mutate(variable = factor(variable, levels = c("tau", "sigma_tau")))
+
+### Define a function to generate plot
+plot_compare_density <- function(df_plot, title = title){
+  ggplot(data = df_plot, aes(x = value, group = Type, fill = Type)) +
+    geom_density(position = "identity", size = 0.1, alpha = 0.3) + 
+    geom_vline(aes(xintercept = 0), size = 0.3, color = "red", linetype = "dashed") + 
+    labs(title = title) + theme_preset
+}
+
+plot_compare_density(df_plot, title = "Posterior densities of hyperparameters (Stan vs. hhsim)") + 
+  facet_wrap(~ variable, scales = "free")
+```
+
+
+## Empirical distribution function (EDF) estimates for $\tau_{k}$s 
+
+```{r}
+df_temp <- df_combine %>%
+  dplyr::select(Type, contains("tau_k[")) %>%
+  gather(key = variable, value = value, -Type) %>%
+  group_by(Type, variable) %>%
+  summarise(mean = mean(value, na.rm = TRUE), 
+            sd = sd(value, na.rm = TRUE)) %>%
+  mutate(id = as.numeric(str_extract(variable, "\\d+"))) %>%
+  arrange(id, Type)
+
+head(df_temp, 10)  
+```
+
+
+```{r, fig.width=10}
+p1 <- plot_compare_density(df_temp %>% rename(value = mean), title = "EDF of posterior means")
+p2 <- plot_compare_density(df_temp %>% rename(value = sd), title = "EDF of posterior SDs")
+plot_grid(p1, p2, labels = "AUTO")
+```
+
+
+
+## Site-specific individual effect estimates $\tau_{k}$s
+
+
+```{r, fig.width=10, fig.height=7}
+### Compare densities: site-specific estiamtes
+set.seed(12345)
+rand_var <- paste0("tau_k[", sample(1:50, 10, replace = FALSE), "]")
+
+df_plot <- df_combine %>%
+  dplyr::select(Type, rand_var) %>%
+  gather(key = variable, value = value, -Type)
+
+title <- "Posterior densities of site-specific estimates (Stan vs. hhsim)"
+plot_compare_density(df_plot, title = title) + 
+  facet_wrap(~ variable, scales = "free")
+```
+
+
+# References
+
+
+

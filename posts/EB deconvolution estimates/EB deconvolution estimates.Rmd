@@ -1,0 +1,199 @@
+---
+title: "Empirical Bayes deconvolution"
+author: 
+  - name: Joon-Ho Lee (joonho@berkeley.edu)
+date: "February 7, 2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: yes
+    theme: readable
+    highlight: haddock
+    css: styles.css
+    fig_caption: yes
+  tufte::tufte_html:
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+bibliography: bibliography.bib
+---
+
+```{r basic_setup, include=FALSE}
+# Set working directory
+setwd("~/Treatment-effect-heterogeneity/Multisite Trials/docs/EB deconvolution estimates")
+
+# Set RMarkdown options
+knitr::opts_chunk$set(
+    echo = TRUE, 
+    message = FALSE,
+    warning = FALSE,
+    error = FALSE,
+    tidy = FALSE,
+    cache = FALSE
+)
+
+# # Set Stan options
+# options(mc.cores = parallel::detectCores())
+# rstan_options(auto_write = TRUE)
+# Sys.setenv(LOCAL_CPPFLAGS = '-march=native')
+
+# Call libraries
+library(tidyverse)
+library(deconvolveR)
+library(hhsim)
+```
+
+
+# Introduction
+
+- This document explores Empirical Bayes methods for learning prior distributions from data. 
+
+- An unknown prior distribution ($g$) has yielded (unobservable) parameters, each of which produces a data point from a parametric exponential family ($f$). 
+
+- The goal is to estimate the unknown prior ($g$-modeling) by deconvolution and Empirical Bayes methods. 
+
+
+
+# Bayes deconvolution problem
+
+- Unknown prior density $g(\theta)$ gives unobserved realizations:
+
+$$
+\Theta_1, \Theta_2, ..., \Theta_N \overset{\text{iid}}{\sim} g(\theta)  
+$$
+
+- Each $\Theta_k$ gives observed $X_k \sim p_{\Theta_{k}}(x)$ where $p_{\Theta_{k}}$ is known. 
+
+- The marginal density of $X$ is 
+
+$$
+f(x) = \int{p_{\theta}(x)g(\theta)d\theta}.
+$$
+
+- We wish to estimate $g(\theta)$ from $X_1, X_2, ..., X_N$. 
+
+- In the normal model of $p_{\Theta_{k}}$, $f(x)$ is the *convolution* of $g(\theta)$ with a standard normal density. 
+
+- The empirical Bayes task is one of *deconvolution*: using the observed sample $X$ from $f(x)$ to estimate $g(\theta)$. @efron2016empirical refers to this as the **$g$-modeling**. 
+
+
+# A simulation example
+
+We start with a simulated Poisson example where the $\Theta_i$ are drawn from a chi-squared density with 10 degrees of freedom and the $X_i|\Theta_i$ are Poisson with expectation $\Theta_i:$
+
+$$
+\Theta_i \sim \chi^2_{10} \mbox{ and } X_i|\Theta_i \sim \mbox{Poisson}(\Theta_i)
+$$
+
+
+The $\Theta_i$ for this setting, with `N = 1000` observations can be generated as follows.
+
+
+```{r}
+set.seed(238923) ## for reproducibility
+N <- 1000
+Theta <- rchisq(N,  df = 10)
+```
+
+
+Next, the $X_i|\Theta_i$, for each of `nSIM = 1000` simulations can
+be generated as below.
+
+```{r}
+nSIM <- 1000
+data <- sapply(seq_len(nSIM), function(x) rpois(n = N, lambda = Theta))
+```
+
+We take the discrete set $\mathcal{T}=(1, 2, \ldots, 32)$ as the
+$\Theta$-space and apply the `deconv` function in the package
+`deconvolveR` to estimate $g(\theta).$
+
+```{r}
+library(deconvolveR)
+tau <- seq(1, 32)
+results <- apply(data, 2,
+                 function(x) deconv(tau = tau, X = x, ignoreZero = FALSE,
+                                    c0 = 1))
+```
+
+The default setting for `deconv` uses the `Poisson` family and a
+natural cubic spline basis of degree 5 as $Q.$ The regularization
+parameter for this example (`c0`) is set to 1. The `ignoreZero`
+parameter indicates that this dataset contains zero counts, i.e.,
+there zeros have not been truncated. (In the Shakespeare example
+below, the counts are of words seen in the canon, and so there is a
+natural truncation at zero.)
+
+Some warnings are emitted by the `nlm` routine used for optimization,
+but they are mostly inconsequential.
+
+
+Since `deconv` works on a sample at a time, the result above is a list
+of lists from which various statistics can be extracted.  Below, we
+construct a table of values for various values of $\Theta$.
+
+```{r}
+g <- sapply(results, function(x) x$stats[, "g"])
+mean <- apply(g, 1, mean)
+SE.g <- sapply(results, function(x) x$stats[, "SE.g"])
+sd <- apply(SE.g, 1, mean)
+Bias.g <- sapply(results, function(x) x$stats[, "Bias.g"])
+bias <- apply(Bias.g, 1, mean)
+gTheta <- pchisq(tau, df = 10) - pchisq(c(0, tau[-length(tau)]), df = 10)
+gTheta <- gTheta / sum(gTheta)
+simData <- data.frame(theta = tau, gTheta = gTheta,
+                      Mean = mean, StdDev = sd, Bias = bias,
+                      CoefVar = sd / mean)
+table1 <- transform(simData,
+                    gTheta = 100 * gTheta,
+                    Mean = 100 * Mean,
+                    StdDev = 100 * StdDev,
+                    Bias = 100 * Bias)
+```
+
+The table below summarizes the results for some chosen values of
+$\theta .$
+
+
+```{r}
+knitr::kable(table1, row.names=FALSE)
+```
+
+Although, the coefficient of variation of $\hat{g}(\theta)$ is still
+large, the $g(\theta)$ estimates are reasonable.
+
+We can compare the empirical standard deviations and biases of
+$g(\hat{\alpha})$ with the approximation given by the formulas in the
+paper.
+
+```{r}
+library(ggplot2)
+library(cowplot)
+theme_set(theme_get() +
+          theme(panel.grid.major = element_line(colour = "gray90",
+                                                size = 0.2),
+                panel.grid.minor = element_line(colour = "gray98",
+                                                size = 0.5)))
+p1 <- ggplot(data = as.data.frame(results[[1]]$stats)) +
+    geom_line(mapping = aes(x = theta, y = SE.g), color = "black", linetype = "solid") +
+    geom_line(mapping = aes(x = simData$theta, y = simData$StdDev), color = "red", linetype = "dashed") +
+    labs(x = expression(theta), y = "Std. Dev")
+
+p2 <- ggplot(data = as.data.frame(results[[1]]$stats)) +
+    geom_line(mapping = aes(x = theta, y = Bias.g), color = "black", linetype = "solid") +
+    geom_line(mapping = aes(x = simData$theta, y = simData$Bias), color = "red", linetype = "dashed") +
+    labs(x = expression(theta), y = "Bias")
+plot_grid(plotlist = list(p1, p2), ncol = 2)
+```
+
+The approximation is quite good for the standard deviations, but a
+little too small for the biases.
+
+# References
+
+
+

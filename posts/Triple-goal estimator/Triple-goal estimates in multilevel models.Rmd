@@ -1,0 +1,200 @@
+---
+title: "Triple-goal estimates in multilevel models"
+author: 
+  - name: Joon-Ho Lee (joonho@berkeley.edu)
+date: "February 3, 2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: yes
+    theme: journal
+    highlight: haddock
+    css: styles.css
+    fig_caption: yes
+  tufte::tufte_html:
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+bibliography: bibliography.bib
+---
+
+```{r basic_setup, include=FALSE}
+# Set working directory
+setwd("~/Treatment-effect-heterogeneity/Multisite Trials/docs/Triple-goal estimator")
+
+# Set RMarkdown options
+knitr::opts_chunk$set(echo = TRUE, warnings = FALSE, message = FALSE)
+
+# # Set Stan options
+# options(mc.cores = parallel::detectCores())
+# rstan_options(auto_write = TRUE)
+# Sys.setenv(LOCAL_CPPFLAGS = '-march=native')
+
+# Call libraries
+library(tidyverse)
+library(HETOP)
+```
+
+# Introduction
+
+@shen1998triple developed a new method of parameter estimation in two-stage hierarchical models. 
+ 
+
+
+
+# Generating a simulated data
+
+```{r}
+# Simulate the true distribution of theta
+set.seed(1001)
+K <- 50           # Number of sites
+nsamp <- 500      # Number of posterior samples
+theta_true <- rnorm(K, mean = 0, sd = 1)
+
+
+# Plot the true distribution
+df <- theta_true %>% tibble()
+names(df) <- "theta_true"
+p <- ggplot(data = df, aes(x = theta_true)) + 
+  geom_histogram() +
+  theme_minimal() + 
+  labs(title = "The distribution of true theta")
+print(p)
+```
+
+
+
+
+```{r}
+# Simulate the posterior samples of each theata_k
+s_fix <- matrix(theta_true, ncol = K, nrow = nsamp, byrow = TRUE)
+s_err <- matrix(rnorm(K*nsamp, sd = 0.4), ncol = K, nrow = nsamp) 
+s_mat <- s_fix + s_err
+dim(s_mat)
+```
+
+
+
+# Posterior means
+
+```{r}
+# Get posterior means
+theta_pm <- apply(s_mat, 2, mean)  # Posterior means
+etadot <- mean(theta_pm)           # Mean of the posterior means
+var_pm <- var(theta_pm)            # Variance of the posterior means
+
+
+# Get posterior SDs and variances
+theta_psd <- apply(s_mat, 2, sd)   # Posterior SDs
+lambda_k <- theta_psd^2            # Posterior variances
+```
+
+
+
+
+# Contrained Bayes estimates
+
+```{r}
+# Get constrained Bayes (CB) estimates
+theta_cb <- etadot + (sqrt(1 + (mean(lambda_k)/var_pm))*(theta_pm - etadot))
+```
+
+
+
+
+
+# Triple-goal estimates
+
+
+```{r}
+# (1) Non-integer ranks
+#  Get rowwise ranks over 500 posterior samples and get averages of them
+rbar <- apply(t(apply(s_mat, 1, rank, ties.method = "average")), 2, mean)
+print(rbar)
+
+# (2) Integer ranks (rank estiamte)
+rhat <- rank(rbar, ties.method = "random")
+print(rhat)
+```
+
+
+
+
+```{r}
+# Triple-goal (GR) estimates
+quantile.type <- 7
+
+theta_gr <- quantile(c(s_mat), probs = (2 * rhat - 1)/(2 * K), 
+                     names = FALSE, type = quantile.type)
+```
+
+
+
+
+# Compare distributions {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+# Collect all estimates
+df_est <- data.frame(index = 1:K, theta_true = theta_true, 
+                     theta_pm = theta_pm, theta_cb = theta_cb, theta_gr = theta_gr, 
+                     theta_psd = theta_psd, rbar = rbar, rhat = rhat)
+
+round(df_est, 2)
+```
+
+
+
+```{r}
+# Select only theta estimates and convert to a long format
+df_est_long <- df_est %>%
+  dplyr::select(contains("theta")) %>%
+    dplyr::select(-contains("psd")) %>%
+  gather(key = estimator, value = value)
+
+
+# Generate a function to compare two distributions
+plot_compare_dist <- function(data = df_plot, vec_est = vec_est){
+  
+  df_plot <- df_est_long %>% 
+    filter(estimator %in% vec_est)
+  
+  ggplot(df_plot, aes(x = value, group = estimator, color = estimator)) + 
+    geom_density(position = "identity", size = 1) + 
+    theme_classic()
+}
+```
+
+- Click tabs
+
+## True vs. Posterior means
+
+```{r}
+plot_compare_dist(df_plot, vec_est = c("theta_true", "theta_pm"))
+```
+
+
+## True vs. Constrained Bayes estimates
+
+```{r}
+plot_compare_dist(df_plot, vec_est = c("theta_true", "theta_cb"))
+```
+
+
+## True vs. Triple-goal estimates
+
+```{r}
+plot_compare_dist(df_plot, vec_est = c("theta_true", "theta_gr"))
+```
+
+
+
+
+
+# References
+
+
+

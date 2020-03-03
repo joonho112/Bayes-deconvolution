@@ -1,7 +1,7 @@
 
 ###'######################################################################
 ###'
-###' Category: Model Estimation
+###' Category: Code Experiment
 ###' 
 ###' Task: Hierarchical model simulations  
 ###' 

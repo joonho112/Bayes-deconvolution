@@ -96,13 +96,13 @@ plot_trend_xy <- function(dataframe,
 # plot_trend_xy(df_plot, Fiscalyear, mean_value)
 
 
-
-###'######################################################################
+########################################################
 ###'
 ###' (2) plot_trend_grp() 
 ###'     - x-y variables
 ###'     - With one group (factor)
 ###'     - No facets
+###'     
 ###'     
 
 ### Define function 'plot_trend_grp'
@@ -149,6 +149,7 @@ plot_trend_grp <- function(dataframe,
     scale_color_manual(values = rev(color_palette[seq(unique(dataframe$groupvar))])) + 
     scale_shape_manual(values = rev(shape_palette[seq(unique(dataframe$groupvar))]))
 }
+
 
 # ### Test the code
 # plot_trend_grp(df_plot, Fiscalyear, mean_value, key, ylim = c(8000, 18000))

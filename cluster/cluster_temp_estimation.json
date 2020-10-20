@@ -1,0 +1,24 @@
+{
+  "name": "Simulation_temp_estimation",
+  "vmSize": "Standard_D2_v2",
+  "maxTasksPerNode": 2,
+  "poolSize": {
+    "dedicatedNodes": {
+      "min": 5,
+      "max": 9
+    },
+    "lowPriorityNodes": {
+      "min": 0,
+      "max": 0
+    },
+    "autoscaleFormula": "QUEUE"
+  },
+  "containerImage": "rocker/tidyverse:latest",
+  "rPackages": {
+    "cran": [],
+    "github": ["gregridgeway/hhsim", "cran/DPpackage"],
+    "bioconductor": []
+  },
+  "commandLine": [],
+  "subnetId": ""
+}

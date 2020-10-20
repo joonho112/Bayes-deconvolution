@@ -637,7 +637,12 @@ for(LLind in 1:LL) {  ### Start of loop over LLind
     ssel = wssel = rep(0, jmax)
     
     
+    
     ### SSEL for individual estimation (using the "theta.ssel" function)
+    
+    weight = rep(1, kmax)
+
+    
     tmp = theta.ssel(kmax, jmax, 
                      thetatrue, est, 
                      weight, 
@@ -845,7 +850,7 @@ for(LLind in 1:LL) {  ### Start of loop over LLind
   ###'
   
   ### Set working directory
-  setwd(file.path(work_dir, "hhsim_results"))
+  setwd("~/Bayes-deconvolution/0_Base Camp")
   
   
   ### Outputs: SEL, ISEL, posterior means and variances, rank estimates

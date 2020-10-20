@@ -1,0 +1,463 @@
+---
+title: "Dirichlet Process Mixtures: Sensitivity to the precision parameter"
+author: 
+  - name: Joon-Ho Lee (joonho@berkeley.edu)
+date: "March 10, 2020"
+output:
+  html_document: 
+    css: styles.css
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+    theme: readable
+    toc: yes
+    toc_depth: 2
+  tufte::tufte_html:
+    number_sections: yes
+    toc: true
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+bibliography: bibliography.bib
+---
+
+```{r basic_setup, include=FALSE}
+# ### Set working directory
+# setwd("~/Bayes-deconvolution/posts/02_Modeling choices_03_Dirichlet Process_alpha sensitivity")
+
+### Set RMarkdown options
+knitr::opts_chunk$set(echo = TRUE, warnings = FALSE, message = FALSE)
+
+### Call libraries
+library(tidyverse)
+library(cowplot)
+library(hhsim)
+library(DPpackage)
+library(bspmma)
+library(rstan)
+
+
+# ### Set Stan options
+# # options(mc.cores = parallel::detectCores())
+# rstan_options(auto_write = TRUE)
+# Sys.setenv(LOCAL_CPPFLAGS = '-march=native')
+
+### Theme settings
+theme_preset <- 
+  theme_bw() + 
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank(), 
+        legend.position = "bottom", 
+        legend.direction = "horizontal", 
+        legend.title = element_blank())
+```
+
+
+# The @rubin1981estimation model with Dirichlet Process prior
+
+## The classic @rubin1981estimation model
+
+Consider $K$ study sites in which researchers perform the same interventions and measure the same outcomes. Each site, indexed by $k$, estimates a treatment effect $\tau_k$ averaged across individuals in the site. The sites don't report $\{\tau_k\}^{K}_{k=1}$: instead, they report $\{\hat{\tau}_k\}^{K}_{k=1}$. Some of the observed variation in $\{\hat{\tau}_k\}^{K}_{k=1}$ is sampling variation, yet there is likely to be some genuine variation in effects across settings, often defined as $\sigma_{\tau}^{2} = \text{var}(\tau_{k})$. 
+
+@rubin1981estimation considers a case in which the analyst has access to a set of estimated effects $\{\hat{\tau}_k\}^{K}_{k=1}$ and estimates of the associated sampling errors $\{\hat{se}_{\tau_k}\}^{K}_{k=1}$. Rubin specifies a relationship between the observed estimates and the unobserved $\{\tau_k\}^{K}_{k=1}$, and in addition specifies a relationship between $\{\tau_k\}^{K}_{k=1}$ and the aggregate parameters $(\tau, \sigma_{\tau}^2)$). The @rubin1981estimation model has a hierarchical likelihood in which each site has own treatment effect parameter, $\tau_k$, but these effects are all drawn from a common distribution governed by $(\tau, \sigma_{\tau}^2)$ as follows: 
+
+
+$$
+\hat{\tau}_{k} \sim N(\tau_{k}, \hat{se}_{k}^2) \quad \forall k, 
+$$
+$$
+\tau_{k} \sim N(\tau, \sigma_{\tau}^2) \quad \forall k. 
+$$
+
+
+## Semiparametric modeling via Dirichlet Process^[See Chapter 4.9 of @congdon2019bayesian.]
+
+The @rubin1981estimation model is fully parametric and a particular case of a more general class of models on the prior distribution $G$. In the @rubin1981estimation model, inferences may depend on the assumed forms for higher level priors (e.g.,  $\tau, \sigma_{\tau}^2$), and will be distorted if there are unrecognized features such as multiple modes in the underlying second-level effects. Instead of assuming a known prior distribution for $G$ for second-level latent effects, the **Dirichlet Process (DP)** prior involves a distribution on $G$ itself, acknowledging uncertainty about its form.  
+
+
+The DP prior involves (1) a base distribution $G_{0}$, the expectation of $G$, and (2) a precision or strength parameter $\alpha_0$ governing the concentration of the prior for $G$ about its mean $G_{0}$. For any partition $A_1, ..., A_M$ on the support of $G_0$, the vector $\{G(A_1), ..., G(A_M)\}$ of probabilities $G(A_m)$ contained in the set $\{A_m, m = 1, ..., M\}$ follows a Dirichlet distribution $\text{Dirichlet}(\alpha_0 \cdot G_0(A_1), ..., \alpha_0 \cdot G_0(A_M))$.^[Such an approach may be termed *semiparametric* as it involves a parametric model at the first level for the observations, but a nonparametric model at the second-level.]   
+
+
+Original forms of the DP prior assumed $G_0$ to be known and fixed. One problem with a Dirichlet Process when $G_0$ is known is that it assigns a probability of 1 to the space of discrete probablity measures, which means that site-level treatment effects $\{\hat{\tau}_k\}^{K}_{k=1}$ are measured exactly. An alternative is to take the parameters in $G_0$ to be unknown, and to follow a set of parametric distributions, with possibly unknown hyperparametrees, resulting in a mixture of Dirichlet Process (MDP) model:
+
+
+$$
+\hat{\tau}_{k} \sim N(\tau_{k}, \hat{se}_{k}^2) \quad \forall k, 
+$$
+$$
+\tau_{k} \sim \text{DP}(G_0, \alpha_0) \quad \forall k,  
+$$
+
+
+where $G_0 = N(\tau, \sigma_{\tau}^{2})$, $\tau \sim N(0, 100)$, and $\sigma_{\tau}^{-2} \sim \text{Gamma}(1, 1)$. 
+
+
+## The goal of this document
+
+The precision parameter $\alpha$ can be considered as random, having a gamma distribution, $\alpha_0 \sim \text{Gamma}(4, 4)$, or fixed at some particular value. In this document, we vary the fixed value of $\alpha$ and examine the sensitivity of posterior inferences to the $\alpha$. We show that the model with DP prior becomes the model with Gaussian prior if the base distribution $G_{0}$ is Gaussian and the precision parameter $\alpha_0$ is fixed at a large value. 
+
+
+
+# Generate a simulated dataset
+
+$G$ will be simulated to follow a mixture of two Gaussian homoscedastic components, $0.8N(0, 1) + 0.2N(4, 1)$, that is normalized to have mean 0 and variance 1. 
+
+
+
+```{r, echo=FALSE, results='hide'}
+###'######################################################################
+###' (1) Get true PDF of thetas
+###'
+
+### Set parameters
+tailp <- c(0.05, 0.1, 0.25, 0.75, 0.9, 0.95)  # tail probabilities
+delta <- 4    # distance between two mixtures
+ups <- 1      # want components to have equal variance
+eps <- 0.2    # mixing proportion (smaller side)
+
+
+### Generate a random vector indicating components 
+ind <- runif(20000) < (1 - eps)
+prop.table(table(ind))
+
+
+### Define a normalizing factor `a`
+a <- sqrt((1 - eps) + eps*ups^2 + eps*(1 - eps)*delta^2)
+a
+
+
+### Get true PDF of thetas from mixture
+quant <- ind*rnorm(20000, -eps*delta/a, sqrt(1/a^2)) + 
+  (1 - ind)*rnorm(20000, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+
+
+### Get true tail quantiles
+mdppriquan <- quantile(quant, tailp)
+mdppriquan
+
+
+### Check mean, SD, and quantiles of the true PDF
+c(mean(quant), sd(quant))
+```
+
+
+
+```{r, echo=FALSE}
+###'######################################################################
+###' (2) Define a function to generate random draws from the mixture distribution
+###'
+
+GenerateMdp <- function(n, rgt, rsr){
+  
+  ### Set parameters 
+  data_obj <- list()
+  data_obj <- NULL
+  delta <- 4    # distance between two mixtures
+  ups <- 1      # want components to have equal variance
+  eps <- 0.2    # mixing proportion (smaller side)
+  
+  
+  ### Define a normalizing factor `a`
+  a <- sqrt((1 - eps) + eps*ups^2 + eps*(1 - eps)*delta^2)
+  
+  
+  ### Simulate a mixture of 2 normals with mean 0 and var 1  with this parameterization
+  ind <- runif(n) < (1 - eps)
+  
+  data_obj$tau_k <- ind*rnorm(n, -eps*delta/a, sqrt(1/a^2)) + 
+    (1 - ind)*rnorm(n, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+  
+  
+  ### Simulate true distribution for quantiles etc.
+  ind <- runif(n) < (1 - eps)
+  
+  data_obj$tau_k <- ind*rnorm(n, -eps*delta/a, sqrt(1/a^2)) + 
+    (1 - ind)*rnorm(n, (1 - eps)*delta/a, sqrt(ups^2/a^2))
+  
+  tailp <- c(0.05, 0.1, 0.25, 0.75, 0.9, 0.95)
+  
+  
+  ### Generate within-site variances (sds) for K sites
+  sigma2max <- rgt*rsr
+  sigma2min <- sigma2max/(rsr^2)
+  sigma2 <- exp(seq(from = log(sigma2min), to = log(sigma2max), length = n))
+  sd <- sqrt(sigma2)
+  
+  
+  ### Generate data object (observed Y)
+  data_obj$tau_k_hat <- rnorm(n, data_obj$tau_k, sd)
+  data_obj$se_k2 <- sigma2
+  data_obj$priquan <- mdppriquan
+  return(data_obj)
+}
+```
+
+
+
+```{r}
+### Generate sample draws from the mixture model
+set.seed(12345)
+
+df_G <- GenerateMdp(n = 50, rgt = 1, rsr = 5)[c(1:3)] %>%
+  data.frame() %>%
+  rownames_to_column("K") %>%
+  mutate_at(.vars = c("K"), .funs = as.numeric)
+
+head(df_G)
+```
+
+
+
+# Parameter estimation using the Dirichlet process prior
+
+We fix $\alpha$ to $(0.1, 0, 100)$ respectively and estimate the posterior distributions of (1) hyperparameters $\tau$ and $\sigma_{\tau}^2$, (2) the number of (assumed) clusters, (3) empirical distribution function (EDF) estimates for $\tau_{k}$s, and (4) site-specific individual effect estimates $\tau_{k}$s. We are interest in examining the change of posterior distributions according to different settings of the precision parameter $\alpha$. 
+
+
+```{r, results='hide'}
+### Set initial state (the current value of the parameters)
+state <- NULL
+
+### Set MCMC parameters
+nburn <- 4000    # the number of burn-in scans
+nsave <- 4000    # the total number of scans to be saved
+nskip <- 20      # the thinning interval
+ndisplay <- 100  # the number of saved scans to be displayed on screen
+
+mcmc <- list(nburn = nburn, nsave = nsave,
+             nskip = nskip, ndisplay = ndisplay)
+
+### Prepare dataset as a matrix form (with y and sigma2)
+mat_DPmeta <- df_G %>% select(tau_k_hat, se_k2) %>% as.matrix()
+
+### A loop over fixed alpha
+alpha_vec <- c(0.1, 1, 100)
+list_collect <- list()
+
+for (i in seq_along(alpha_vec)){ 
+
+  ## Set prior parameters
+  prior <- list(alpha = alpha_vec[i],  # fixed precision parameter
+                tau1 = 1,             # G0 variance: shape param.
+                tau2 = 1,             # G0 variance: rate param. 
+                mub = 0, 
+                Sb = 100)             # G0 mean: mean 
+  
+  ## Estimate the Dirichlet Process model using DPpackage 
+  outp_DPmeta <- DPmeta(formula = mat_DPmeta ~ 1,
+                        prior = prior, mcmc = mcmc, 
+                        state = state, status = TRUE)
+  
+  ## Save as a list element
+  list_collect[[i]] <- outp_DPmeta
+} 
+
+### Define a function to tidy up the DPmeta objects
+get_posterior_DPmeta <- function(outp = outp_DPmeta, nburn = 4000){
+  
+  # (1) Tidy up the "theta" output object
+  df_theta <- outp$save.state$randsave %>%
+    data.frame() %>% 
+    dplyr::select(-Prediction) %>%
+    slice(c((nburn/2 + 1):nburn))  # throw away burn-ins
+  colnames(df_theta) <- paste0("tau_k[", seq(ncol(df_theta)), "]")
+  
+  # (2) Tidy up the G0 parameters (m, s2), alpha0, and N of clusters outputs
+  df_hyperparm <- outp$save.state$thetasave %>%
+    data.frame() %>%
+    dplyr::select(-tau_k_hat) %>%
+    rename(G0_mu = mu, G0_s2 = sigma2, Ncluster = ncluster, alpha0 = alpha) %>%
+    dplyr::select(G0_mu, G0_s2, alpha0, Ncluster) %>%
+    slice(c((nburn/2 + 1):nburn))  # throw away burn-ins
+  
+  # Return the resulting object
+  cbind.data.frame(df_hyperparm, df_theta)
+}
+
+### Collect posterior samples per each alpha setting
+list_df <- list()
+for (i in seq_along(alpha_vec)){
+  list_df[[i]] <- get_posterior_DPmeta(list_collect[[i]], nburn)
+}
+
+df_collect <- bind_rows(list_df) %>%
+  mutate(alpha0 = as.character(alpha0))
+```
+
+
+# Parameter estimation using the Gaussian prior
+
+Next, we obtain simulates from the posterior of a Gaussian model using **Stan**. We aim to verify that we get a solution that is very similar to just assuming a Gaussian distribution if we fix $\alpha$ to a large value instead of giving it a prior. 
+
+
+```
+data {
+  int<lower = 0> K;         // number of sites 
+  real tau_hat_k[K];        // estimated treatment effects
+  real<lower=0> se_k[K];    // s.e. of effect estimates 
+}
+parameters {
+  real tau; 
+  real<lower=0> sigma_tau2;
+  real tau_k[K];
+}
+transformed parameters {
+  real<lower=0> sigma_tau;
+  sigma_tau = sqrt(sigma_tau2);
+}
+model {
+  sigma_tau2 ~ inv_gamma(1, 1);     // vague prior
+  tau ~ normal(0, 100);             // vague prior
+  tau_k ~ normal(tau, sigma_tau);   // second-level normal
+  tau_hat_k ~ normal(tau_k, se_k);  // third-level normal
+}
+generated quantities{
+  real predicted_tau_k;
+  predicted_tau_k = normal_rng(tau, sigma_tau);  //mixed predictive 
+}
+
+```
+
+Note that we impose a gamma prior on the inverse variance components $\sigma_{\tau}^{-2}$ even though serious problems can result if the number of second stage units(i.e., sites) is small and/or the variance are near zero [@gelman2006prior]. We opt for the gamma prior in order to allow the comparison with DP prior models because the `DPmeta` function assumes the inverse gamma distribution for the prior distribution of the variance of the base distribution $G_{0}$.  
+
+```{r, echo=FALSE}
+fit_norm <- readRDS(file = "fit_norm.RDS")
+```
+
+
+```{r, eval=FALSE}
+### Collect data into a list format suitable for Stan
+stan_data <- list(K = length(df_G$K), 
+                  tau_hat_k = df_G$tau_k_hat, 
+                  se_k = sqrt(df_G$se_k2))
+
+### Compile and run the stan model
+fit_norm <- stan(file = "rubin_model_Gaussian_Invgamma prior.stan",
+                 data = stan_data,
+                 iter = 1000, chains = 4)
+```
+
+```{r}
+print(fit_norm, probs = c(0.1, 0.5, 0.9), digits = 3)
+```
+
+
+
+# Comparison of posterior samples 
+
+```{r}
+### Extract posterior samples
+df_norm <- as.data.frame(fit_norm) %>%
+  mutate(alpha0 = "Gaussian") %>%
+  rename(G0_mu = tau, G0_s2 = sigma_tau2) %>%
+  dplyr::select(-sigma_tau, -predicted_tau_k, -lp__) %>%
+  dplyr::select(G0_mu, G0_s2, alpha0, everything())
+  
+### Append to the results from DPpackage
+df_combine <- bind_rows(list(df_norm, df_collect)) %>% 
+  mutate(alpha0 = factor(alpha0, levels = c("Gaussian", alpha_vec)))
+```
+
+
+## Hyperparameters $\tau$ and $\sigma_{\tau}$
+
+```{r, fig.width=10}
+### Generate a dataframe to plot
+df_plot <- df_combine %>%
+  dplyr::select(alpha0, G0_mu, G0_s2) %>%
+  mutate(G0_s2 = log(G0_s2)) %>%    # Log-transformation for G0_s2
+  gather(key = variable, value = value, -alpha0) %>%
+  mutate(variable = factor(variable, levels = c("G0_mu", "G0_s2")))
+
+
+### Define a function to generate plot
+plot_compare_density <- function(df_plot, title = title, subtitle = subtitle){
+  ggplot(data = df_plot, aes(x = value, group = alpha0, fill = alpha0)) +
+    geom_density(position = "identity", size = 0.1, alpha = 0.3) + 
+    geom_vline(aes(xintercept = 0), size = 0.3, color = "red", linetype = "dashed") + 
+    labs(title = title, subtitle = subtitle) + theme_preset
+}
+
+### Plot
+title <- c("Posterior densities of hyperparameters")
+subtitle <- c("by different settings of the fixed precision parameter")
+plot_compare_density(df_plot, title = title, subtitle = subtitle) + 
+  facet_wrap(~ variable, scales = "free")
+```
+
+
+## The number of clusters
+
+```{r, fig.width=10}
+### Generate a dataframe to plot
+df_plot <- df_combine %>%
+  dplyr::select(alpha0, Ncluster) %>%
+  gather(key = variable, value = value, -alpha0) %>%
+  drop_na()
+
+
+### Define a function to generate plot
+plot_compare_histogram <- function(df_plot, title = title, subtitle = subtitle){
+  ggplot(data = df_plot, aes(x = value, group = alpha0, fill = alpha0)) +
+    geom_histogram(position = "dodge", size = 1, alpha = 0.3) + 
+    geom_vline(aes(xintercept = 0), size = 0.3, color = "red", linetype = "dashed") + 
+    labs(title = title, subtitle = subtitle) + theme_preset
+}
+
+### Plot
+title <- c("Posterior densities of the (assumed) number of clusters")
+plot_compare_histogram(df_plot, title = title, subtitle = subtitle) + 
+  facet_wrap(~ variable, scales = "free") + 
+  scale_x_continuous(breaks = 1:max(df_plot$value, na.rm = TRUE))
+```
+
+
+## Empirical distribution function (EDF) estimates for $\tau_{k}$s 
+
+```{r, fig.width=10}
+### Generate a dataframe to plot
+df_plot <- df_combine %>%
+  dplyr::select(alpha0, contains("tau_k[")) %>%
+  gather(key = variable, value = value, -alpha0) %>%
+  group_by(alpha0, variable) %>%
+  summarise(mean = mean(value, na.rm = TRUE), 
+            sd = sd(value, na.rm = TRUE)) %>%
+  mutate(id = as.numeric(str_extract(variable, "\\d+"))) %>%
+  arrange(id, alpha0) 
+
+### Plot
+p1 <- plot_compare_density(df_plot %>% rename(value = mean), 
+                           title = "EDF of posterior means", 
+                           subtitle = NULL)
+
+p2 <- plot_compare_density(df_plot %>% rename(value = sd), 
+                           title = "EDF of posterior SDs", 
+                           subtitle = NULL)
+
+plot_grid(p1, p2, labels = "AUTO")
+```
+
+
+## Site-specific individual effect estimates $\tau_{k}$s
+
+```{r, fig.width=10, fig.height=7}
+### Randomly sample 10 sites
+set.seed(12345)
+rand_var <- paste0("tau_k[", sample(1:50, 10, replace = FALSE), "]")
+
+### Generate a dataframe to plot
+df_plot <- df_combine %>%
+  dplyr::select(alpha0, rand_var) %>%
+  gather(key = variable, value = value, -alpha0) 
+
+### Plot
+title <- "Posterior densities of site-specific estimates"
+plot_compare_density(df_plot, title = title, subtitle = subtitle) + 
+  facet_wrap(~ variable, scales = "free")
+```
+
+
+# References
+
+
+

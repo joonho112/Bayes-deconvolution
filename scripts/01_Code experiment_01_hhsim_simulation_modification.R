@@ -30,7 +30,9 @@ rm(list=ls())   # delete all the objects in the workspace
 
 
 ### Set working directory 
-work_dir <- c("~/Treatment-effect-heterogeneity/Multisite Trials")
+# work_dir <- c("~/Treatment-effect-heterogeneity/Multisite Trials")
+# work_dir <- c("~/Documents/Bayes-deconvolution")
+work_dir <- c("~/Bayes-deconvolution")
 setwd(work_dir)
 
 
@@ -47,20 +49,33 @@ library(haven)
 
 
 ### Call functions
-list.files("functions", full.names = TRUE) %>% walk(source)
+# list.files("functions", full.names = TRUE) %>% walk(source)
 
 
 
 ###'######################################################################
 ###'
-###' Install and load hhsim R package => Working!
+###' Install and load hhsim R package 
+###' 
+###' => Working! in Windows
+###' 
+###' => Not Working in Mac
+###' 
+###'   (1) is it due to the lack of the `Rcpp` package? => No
+###'   (2) is it due to MacOS developer tool? => Highly likely
 ###'
 ###'
 
-# install.packages("remotes")
-# 
-# remotes::install_github("gregridgeway/hhsim")
+### Install `hhsim` package
+install.packages("remotes")
+remotes::install_github("gregridgeway/hhsim")
 
+
+### Update/install `rcpp` package
+install.packages("Rcpp")
+
+
+### Call the library
 library(hhsim)
 
 

@@ -31,7 +31,7 @@ rm(list=ls())   # delete all the objects in the workspace
 
 
 ### Set working directory 
-work_dir <- c("~/Bayes-deconvolution")
+work_dir <- c("~/Documents/Bayes-deconvolution")
 setwd(work_dir)
 
 

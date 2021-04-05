@@ -66,13 +66,13 @@ library(haven)
 ###'
 ###'
 
-### Install `hhsim` package
-install.packages("remotes")
-remotes::install_github("gregridgeway/hhsim")
-
-
-### Update/install `rcpp` package
-install.packages("Rcpp")
+# ### Install `hhsim` package
+# install.packages("remotes")
+# remotes::install_github("gregridgeway/hhsim")
+# 
+# 
+# ### Update/install `rcpp` package
+# install.packages("Rcpp")
 
 
 ### Call the library

@@ -7,13 +7,16 @@
 ###' 
 ###'  [Figure 05]. Interaction plots for Meta-model regression results 
 ###'  
+###'   - MSEL for individual site effects & ISEL for EDF (MSELR is missing)
+###'  
 ###'   - The effect of N and R by I levels
+###'   
 ###'           
 ###' Data: Simulated data
 ###' 
 ###' Data: 2020-04-27
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -33,8 +36,12 @@ setwd(work_dir)
 
 
 ### Set a data directory
+# data_dir <- file.path(work_dir, "datasets", 
+#                       "11_All collected and replicated loss estimates")
+
 data_dir <- file.path(work_dir, "datasets", 
-                      "11_All collected and replicated loss estimates")
+                      "11-1_All collected and replicated loss estimates_updated-MSELR")
+
 
 
 ### Call libraries
@@ -66,7 +73,7 @@ df <- df %>%
   mutate(cluster_ID = factor(cluster_ID)) %>%
   mutate(SSEL = SSEL*1000, 
          ISEL = ISEL*1000, 
-         SELrank = SELrank*1000)
+         SELrank = SELrank)
 
 classmode(df, everything())
 
@@ -110,7 +117,7 @@ df <- df %>%
 ###'
 ###' [Figure 05]. 
 ###' 
-###' [Panel A] Effects of increasing N on the MSEL of individual effects
+###' [Panel A] Effects of increasing N on the MSEL of individual effects (PM)
 ###' 
 ###' By shrinkage factor I
 ###' 
@@ -236,7 +243,7 @@ pA <- ggplot(data = df_plot_sub,
 ###'
 ###' [Figure 05]. 
 ###' 
-###' [Panel B] Effects of increasing N on the MSEL of individual effects
+###' [Panel B] Effects of increasing N on the ISEL of EDF (GR)
 ###' 
 ###' By shrinkage factor I
 ###' 
@@ -362,7 +369,7 @@ pB <- ggplot(data = df_plot_sub,
 ###'
 ###' [Figure 05]. 
 ###' 
-###' [Panel C] Effects of R on the MSEL of individual effects
+###' [Panel C] Effects of R on the MSEL of individual effects (PM)
 ###' 
 ###' By shrinkage factor I
 ###' 
@@ -488,7 +495,7 @@ pC <- ggplot(data = df_plot_sub,
 ###'
 ###' [Figure 05]. 
 ###' 
-###' [Panel D] Effects of increasing N on the MSEL of individual effects
+###' [Panel D] Effects of R on the ISEL of EDF (GR)
 ###' 
 ###' By shrinkage factor I
 ###' 

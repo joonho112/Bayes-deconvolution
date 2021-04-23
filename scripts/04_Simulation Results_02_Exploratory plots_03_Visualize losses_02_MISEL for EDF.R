@@ -14,7 +14,7 @@
 ###' 
 ###' Data: 2020-04-09
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -34,8 +34,10 @@ setwd(work_dir)
 
 
 ### Set a data directory
-data_dir <- file.path(work_dir, "datasets", "10_All collections_with DP-inform")
-
+# data_dir <- file.path(work_dir, "datasets", "10_All collections_with DP-inform")
+data_dir <- file.path(work_dir, 
+                      "datasets", 
+                      "10-1_All collections_with DP-inform_updated-MSELR")
 
 ### Call libraries
 library(tidyverse)
@@ -72,7 +74,7 @@ df_loss <- df_loss_temp %>%
   filter(assumed %in% c("Gaussian", "DP-diffuse", "DP-Inform")) %>%
   filter(!(N %in% c("N = 100")))
 
-# df_loss <- df_loss_temp
+df_loss <- df_loss_temp
 
 
 

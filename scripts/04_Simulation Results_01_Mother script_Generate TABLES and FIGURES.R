@@ -9,7 +9,7 @@
 ###' 
 ###' Data: 2020-04-01
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -30,8 +30,8 @@ setwd(work_dir)
 
 
 ### Set a data directory
-data_dir <- file.path(work_dir, "datasets", "04_Simulation results")
-temp_dir <- file.path(data_dir, "temp_results")
+# data_dir <- file.path(work_dir, "datasets", "04_Simulation results")
+data_dir <- c("D:/Data/DP_Simulation")
 
 
 ### Call libraries
@@ -41,8 +41,8 @@ library(cowplot)
 
 ### Call functions
 list.files("functions", full.names = TRUE) %>% walk(source)
-source(file = "scripts/03_Simulation Implementation_04_Plot helpers.R")
-source(file = "scripts/03_Simulation Implementation_05_Data management helpers.R")
+source(file = "functions/03_Simulation Implementation_04_Plot helpers.R")
+source(file = "functions/03_Simulation Implementation_05_Data management helpers.R")
 
 
 

@@ -7,9 +7,11 @@
 ###' 
 ###' Data: Simulated data
 ###' 
-###' Data: 2020-05-02
+###' Date: 2020-05-02 
+###'       2021-04-20  updated
+###'
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -147,8 +149,8 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
     
     
     ### Reset working directory
-    setwd(folder_dir)
-
+    setwd(file.path(work_dir, folder_dir))
+    
     
     
     ###'######################################################################
@@ -218,10 +220,10 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
     list_temp <- list()
     
     
-    for (j in seq_along(vec_ID)){
+    for (k in seq_along(vec_ID)){
       
       df_fit <- df_valid %>%
-        filter(School_Code == vec_ID[j])
+        filter(School_Code == vec_ID[k])
       
       mod_fit <- glm(y ~ treat, data = df_fit, family = "binomial")
       
@@ -229,10 +231,10 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
         {.$coefficients} %>%
         data.frame() %>% 
         rownames_to_column() %>%
-        mutate(School_Code =  vec_ID[j]) %>%
+        mutate(School_Code =  vec_ID[k]) %>%
         dplyr::select(School_Code, everything())
       
-      list_temp[[j]] <- df_coef
+      list_temp[[k]] <- df_coef
       
     }
     
@@ -296,7 +298,7 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
     
     ### Prepare dataset as a matrix form (with y and sigma2)
     mat_DPmeta <- df_es %>% 
-      select(Estimate, SE) %>% 
+      dplyr::select(Estimate, SE) %>% 
       set_names(c("Y", "sigma2")) %>%
       as.matrix()
     
@@ -340,7 +342,7 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
 
     ### Prepare dataset as a matrix form (with y and sigma2)
     mat_DPmeta <- df_es %>% 
-      select(Estimate, SE) %>% 
+      dplyr::select(Estimate, SE) %>% 
       set_names(c("Y", "sigma2")) %>%
       as.matrix()
     
@@ -424,10 +426,10 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
     
     list_est <- list()
     
-    for (k in seq(length(list_collect))){
+    for (l in seq(length(list_collect))){
       
       ### Compute PM, PSD, CB, GR, rbar, and rhat
-      df_posterior <- list_collect[[k]]
+      df_posterior <- list_collect[[l]]
       
       df_theta <- df_posterior %>%
         dplyr::select(contains("tau_k["))  # Extract only site-specific estimates
@@ -449,7 +451,7 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
       
       
       ### Save as a list component 
-      list_est[[k]] <- df_est
+      list_est[[l]] <- df_est
     }
     
     
@@ -465,15 +467,15 @@ for (i in seq_along(list_Grades)){  # (1) Loop over grade levels (i)
     ###'
     ###'
     
-    for (l in seq(length(list_est))){
+    for (m in seq(length(list_est))){
       
-      df_temp <- list_est[[l]]
+      df_temp <- list_est[[m]]
       
       df_temp <- df_temp %>%
-        mutate(G_prior = names(list_est)[l]) %>%
+        mutate(G_prior = names(list_est)[m]) %>%
         dplyr::select(G_prior, everything())
       
-      list_est[[l]] <- df_temp
+      list_est[[m]] <- df_temp
       
     }
     

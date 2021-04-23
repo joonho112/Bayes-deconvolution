@@ -11,7 +11,7 @@
 ###' 
 ###' Data: 2020-04-29
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 

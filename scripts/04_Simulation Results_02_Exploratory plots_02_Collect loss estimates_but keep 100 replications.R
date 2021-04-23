@@ -11,7 +11,7 @@
 ###' 
 ###' Data: 2020-04-09
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -154,7 +154,7 @@ df_long <- df_temp %>%
 
 
 ###' Generate a cluster variable 
-###' We fitted the same model for the same data-generating mechanismdf
+###' We fitted the same model for the same data-generating mechanism
 df_SSEL <- df_long %>%
   select(N, ICC, rsr, truth, rep_ID) %>%
   distinct() %>%

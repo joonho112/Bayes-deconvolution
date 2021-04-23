@@ -65,11 +65,15 @@ df_sim <- read.csv(file = "tables/simulation parameters_2_All with dg_name mark.
 ###'
 ###'
 
-### Parameter selection => drop DP_EB for now
+### Parameter selection 
 tabdf(df_sim, assumed)
 
-df_select <- df_sim %>%
-  filter(assumed == c("DP-EB"))
+# # Drop one or more estimation model
+# df_select <- df_sim %>%
+#   filter(assumed == c("DP-EB"))
+
+# Keep all estimation models 
+df_select <- df_sim
 
 nrow(df_select)
 
@@ -295,16 +299,16 @@ for (j in 1:N_cond){
     ###' 
     ###'
     
-    SEL_rank <- SEL(df_est$rhat, df_est$rtrue)
-    SEL_rank_PM <- SEL(df_est$rpm, df_est$rtrue)
-    SEL_rank_CB <- SEL(df_est$rcb, df_est$rtrue)
-    SEL_rank_GR <- SEL(df_est$rgr, df_est$rtrue)
-    SEL_rank_ML <- SEL(df_est$rml, df_est$rtrue)
+    SEL_rank <- MSEL(df_est$rhat, df_est$rtrue)
+    SEL_rank_PM <- MSEL(df_est$rpm, df_est$rtrue)
+    SEL_rank_CB <- MSEL(df_est$rcb, df_est$rtrue)
+    SEL_rank_GR <- MSEL(df_est$rgr, df_est$rtrue)
+    SEL_rank_ML <- MSEL(df_est$rml, df_est$rtrue)
     
     array_SEL_rank[i, ] <- c(SEL_rank, SEL_rank_PM, SEL_rank_CB, 
                              SEL_rank_GR, SEL_rank_ML) 
     
-    
+
     
     ###'######################################################################
     ###'

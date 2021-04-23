@@ -77,6 +77,7 @@ get_posterior_DPmeta <- function(output = outp, nburn_DP = 4000){
 ###' SEL()
 ###' 
 ###' - Calculate squared-error loss (SEL)
+###' - This version is problematic
 ###'
 ###'
 
@@ -90,6 +91,27 @@ SEL <- function(est_vec, true_vec){
   squared_error <- (est_k - true_k)^2
   SEL <- sum(squared_error)*(1/K_max)
   return(SEL)
+}
+
+
+###'######################################################################
+###'
+###' MSEL()
+###' 
+###' - Calculate squared-error loss (SEL)
+###'
+###'
+
+MSEL <- function(est_vec, true_vec){
+  
+  K_max <- length(true_vec)
+  
+  true_k <- est_vec
+  est_k <- true_vec
+  
+  squared_error <- (est_k - true_k)^2
+  MSEL <- sum(squared_error)*(1/K_max)
+  return(MSEL)
 }
 
 

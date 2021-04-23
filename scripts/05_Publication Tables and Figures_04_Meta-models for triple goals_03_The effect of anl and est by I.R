@@ -7,16 +7,16 @@
 ###' 
 ###'  [Figure 06 & 7]. Interaction plots for Meta-model regression results 
 ###'  
-###'   (1) The effect of CB and GR on loss estimates
+###'   (1) The effect of CB and GR on loss estimates (MSEL, ISEL)
 ###'   
-###'   (2) The effect of DP priors on loss estimates
+###'   (2) The effect of DP priors on loss estimates (MSEL, ISEL)
 ###'   
 ###'           
 ###' Data: Simulated data
 ###' 
 ###' Data: 2020-04-27
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -36,8 +36,12 @@ setwd(work_dir)
 
 
 ### Set a data directory
+# data_dir <- file.path(work_dir, "datasets", 
+#                       "11_All collected and replicated loss estimates")
+
 data_dir <- file.path(work_dir, "datasets", 
-                      "11_All collected and replicated loss estimates")
+                      "11-1_All collected and replicated loss estimates_updated-MSELR")
+
 
 
 ### Call libraries
@@ -70,7 +74,7 @@ df <- df %>%
   mutate(cluster_ID = factor(cluster_ID)) %>%
   mutate(SSEL = SSEL*1000, 
          ISEL = ISEL*1000, 
-         SELrank = SELrank*1000)
+         SELrank = SELrank)
 
 classmode(df, everything())
 

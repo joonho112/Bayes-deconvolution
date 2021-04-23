@@ -11,7 +11,7 @@
 ###' 
 ###' Data: 2020-04-26
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
@@ -31,8 +31,11 @@ setwd(work_dir)
 
 
 ### Set a data directory
+# data_dir <- file.path(work_dir, "datasets", 
+#                       "11_All collected and replicated loss estimates")
+
 data_dir <- file.path(work_dir, "datasets", 
-                      "11_All collected and replicated loss estimates")
+                      "11-1_All collected and replicated loss estimates_updated-MSELR")
 
 
 ### Call libraries
@@ -62,12 +65,14 @@ setwd(data_dir)
 df <- readRDS(file = "All collected and replicated loss estimates.rds") 
 
 
-### Convert the cluster_ID into factor
+###' Convert the cluster_ID into factor
+###' and rescale MSEL and ISEL (multiply by 1000)
+###' Do not multiply 1000 for MSELR
 df <- df %>%
   mutate(cluster_ID = factor(cluster_ID)) %>%
   mutate(SSEL = SSEL*1000, 
          ISEL = ISEL*1000, 
-         SELrank = SELrank*1000)
+         SELrank = SELrank)
 
 classmode(df, everything())
 
@@ -182,7 +187,7 @@ for (i in seq_along(vec_truth)){
 
 
 ### Bind columns and save the results
-setwd("~/Bayes-deconvolution/tables/01_Regression tables")
+setwd("~/Bayes-deconvolution/tables/01_Regression tables_updated")
 
 saveRDS(list_fit, file = "01_Regression object_01_SSEL individual effects.rds")
 
@@ -269,7 +274,7 @@ for (i in seq_along(vec_truth)){
 
 
 ### Bind columns and save the results
-setwd("~/Bayes-deconvolution/tables/01_Regression tables")
+setwd("~/Bayes-deconvolution/tables/01_Regression tables_updated")
 
 saveRDS(list_fit, file = "01_Regression object_02_ISEL for EDF.rds")
 
@@ -285,7 +290,7 @@ write.csv(bind_cols(list_df_fit_pub),
 ###'
 ###' Fit meta-models & save the tables as .csv file
 ###' 
-###' (3) ISEL for the empirical distribution function (EDF)
+###' (3) MSEL for the ranks
 ###'
 ###'
 
@@ -356,7 +361,7 @@ for (i in seq_along(vec_truth)){
 
 
 ### Bind columns and save the results
-setwd("~/Bayes-deconvolution/tables/01_Regression tables")
+setwd("~/Bayes-deconvolution/tables/01_Regression tables_updated")
 
 saveRDS(list_fit, file = "01_Regression object_03_SSEL for rank.rds")
 

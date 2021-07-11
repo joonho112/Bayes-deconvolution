@@ -2,6 +2,7 @@
 title: "Dirichlet Process Mixtures: Sensitivity to the precision parameter"
 author: 
   - name: Joon-Ho Lee (joonho@berkeley.edu)
+  - name: Yuan Ge (`yge4@ua.edu`)
 date: "March 10, 2020"
 output:
   html_document: 
@@ -11,7 +12,7 @@ output:
     number_sections: yes
     theme: readable
     toc: yes
-    toc_depth: 2
+    toc_depth: 1
   tufte::tufte_html:
     number_sections: yes
     toc: true

@@ -13,7 +13,7 @@
 ###' 
 ###' Data: 2020-03-23
 ###' 
-###' Author: JoonHo Lee (joonho@berkeley.edu)
+###' Author: JoonHo Lee (`joonho@berkeley.edu`)
 ###' 
 ###' 
 
